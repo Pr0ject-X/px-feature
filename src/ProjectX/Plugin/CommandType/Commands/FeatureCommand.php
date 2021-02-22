@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Pr0jectX\PxFeature\ProjectX\Plugin\CommandType\Commands;
 
-use Consolidation\Config\Loader\ConfigProcessor;
-use Consolidation\Config\Loader\YamlConfigLoader;
-use Cz\Git\GitRepository;
+use Pr0jectX\PxFeature\GitRepository;
 use Pr0jectX\Px\ProjectX\Plugin\PluginCommandTaskBase;
 use Pr0jectX\Px\ProjectX\Plugin\PluginInterface;
 use Pr0jectX\Px\PxApp;
@@ -92,6 +90,11 @@ class FeatureCommand extends PluginCommandTaskBase
         }
     }
 
+    private function _currentBranchIsFeature() {
+        $branch_name = $this->git->getCurrentBranchName();
+        return $this->configExists($branch_name);
+    }
+
     /**
      * Checkout a new feature branch and db if they exist.
      *
@@ -99,6 +102,12 @@ class FeatureCommand extends PluginCommandTaskBase
      */
     public function featureCheckout(string $name): void
     {
+      $current_name = $this->git->getCurrentBranchName();
+        if ($name != $current_name) {
+          if ($this->confirm("Save feature $current_name before switching?", FALSE)) {
+            $this->featureSave($current_name);
+          }
+        }
         if ($this->configExists($name)) {
 
             try {
@@ -118,6 +127,45 @@ class FeatureCommand extends PluginCommandTaskBase
         }
     }
 
+    private function _gitCommitChanges() {
+      $this->git->addAllChanges();
+      $this->git->commit('px feature save');
+
+      $name = $this->git->getCurrentBranchName();
+      $config = &$this->config($name);
+      $config['temp_hash_id'] =  $this->git->getLastCommitId();
+      $this->configSave();
+
+    }
+
+    private function _gitRevertChanges() {
+      $name = $this->git->getCurrentBranchName();
+      $config = &$this->config($name);
+
+      $hash = $this->git->getLastCommitId();
+      if (isset($config['temp_hash_id']) && $hash === $config['temp_hash_id']) {
+        $this->git->reset($hash);
+      }
+    }
+
+    public function featureSave($name = NULL): void
+    {
+        if (!$name) {
+          $name = $this->git->getCurrentBranchName();
+        }
+        $this->taskSymfonyCommand($this->findCommand('db:export'))
+            ->arg('export_dir', self::CONFIG_DIR)
+            ->opt('filename', $name)
+            ->run();
+
+        $config = &$this->config($name);
+        // TODO: Make this configurable.
+        $config['branch'] = $name;
+        // TODO: Figure out the name of the file from the command.
+        $config['database'] = "{$name}.sql.gz";
+        $this->configSave();
+    }
+
     /**
      * Create a new feature branch and db optionally from remote?.
      */
@@ -126,20 +174,11 @@ class FeatureCommand extends PluginCommandTaskBase
         try {
             $this->_gitCheckoutBranch($name);
 
-            $config = &$this->config($name);
-            // TODO: Make this configurable.
-            $config['branch'] = $name;
-
             $this->taskSymfonyCommand($this->findCommand('platformsh:sync'))
                 ->arg('siteEnv', $name)
                 ->run();
-            $this->taskSymfonyCommand($this->findCommand('db:export'))
-                ->arg('export_dir', self::CONFIG_DIR)
-                ->opt('filename', $name)
-                ->run();
-            // TODO: Figure out the name of the file from the command.
-            $config['database'] = "{$name}.sql.gz";
-            $this->configSave();
+
+            $this->featureSave($name);
         }
         catch (\Exception $e) {
             $this->error($e->getMessage());
@@ -148,7 +187,7 @@ class FeatureCommand extends PluginCommandTaskBase
 
     private function _gitCheckoutBranch($name) {
         if ($name == $this->git->getCurrentBranchName()) {
-            if (!$this->confirm("Branch $name already checkout out, would you like to continue anyway?")) {
+            if (!$this->confirm("Branch $name already checkout out, would you like to continue?")) {
                 throw new \Exception('Feature checkout canceled');
             }
         }
@@ -159,11 +198,17 @@ class FeatureCommand extends PluginCommandTaskBase
                 throw new \Exception('Branch does not exist');
             }
             if ($this->git->hasChanges()) {
-                // TODO: Automatically stash or commit changes and save commit hash.
-                throw new \Exception('The current branch has changes which need to be committed or stashed.');
+              if (!$this->confirm("Branch $name has uncommitted changes. Type yes to save to a temporariy commit and revert later, or no to abort and commit manually.")) {
+                throw new \Exception('Feature checkout canceled');
+              }
+              // Current branch should be branch you're switching to.
+              $this->_gitCommitChanges();
             }
 
             $this->git->checkout($name);
+
+            // Current branch should be the newly checked out branch.
+            $this->_gitRevertChanges();
         }
     }
 
