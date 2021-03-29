@@ -92,7 +92,7 @@ class FeatureCommand extends PluginCommandTaskBase
 
     private function _currentBranchIsFeature() {
         $branch_name = $this->git->getCurrentBranchName();
-        return $this->configExists($branch_name);
+        return $this->featureExists($branch_name);
     }
 
     /**
@@ -102,13 +102,14 @@ class FeatureCommand extends PluginCommandTaskBase
      */
     public function featureCheckout(string $name): void
     {
-      $current_name = $this->git->getCurrentBranchName();
+        $current_name = $this->git->getCurrentBranchName();
+
         if ($name != $current_name) {
-          if ($this->confirm("Save feature $current_name before switching?", FALSE)) {
-            $this->featureSave($current_name);
-          }
+            if ($this->confirm("Save feature $current_name before switching?", FALSE)) {
+                $this->featureSave($current_name);
+            }
         }
-        if ($this->configExists($name)) {
+        if ($this->featureExists($name)) {
 
             try {
                 $this->_gitCheckoutBranch($name);
@@ -165,18 +166,17 @@ class FeatureCommand extends PluginCommandTaskBase
         $this->storageSave();
     }
 
-    /**
-     * Create a new feature branch and db optionally from remote?.
-     */
     public function featureCreate($name): void
     {
         try {
             $this->_gitCheckoutBranch($name);
 
-            $this->taskSymfonyCommand($this->findCommand('platformsh:sync'))
-                ->arg('siteEnv', $name)
-                ->run();
-
+            // TODO: Add to plugin configuration for using pantheon.
+            if ($this->findCommand('platformsh:sync')) {
+              $this->taskSymfonyCommand($this->findCommand('platformsh:sync'))
+                  ->arg('siteEnv', $name)
+                  ->run();
+            }
             $this->featureSave($name);
         }
         catch (\Exception $e) {
@@ -191,13 +191,14 @@ class FeatureCommand extends PluginCommandTaskBase
             }
         }
         if ($name != $this->git->getCurrentBranchName()) {
+            $current_name = $this->git->getCurrentBranchName();
             $branches = $this->git->getBranches();
             if (!in_array($name, $branches)) {
                 // TODO: Automatically create branch.
                 throw new \Exception('Branch does not exist');
             }
             if ($this->git->hasChanges()) {
-              if (!$this->confirm("Branch $name has uncommitted changes. Type yes to save to a temporariy commit and revert later, or no to abort and commit manually.")) {
+              if (!$this->confirm("Store uncommitted changes to a commit for $current_name? Enter [n] to cancel checkout and commit manually.", 'y')) {
                 throw new \Exception('Feature checkout canceled');
               }
               // Current branch should be branch you're switching to.
