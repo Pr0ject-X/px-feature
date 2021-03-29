@@ -23,21 +23,21 @@ class FeatureCommand extends PluginCommandTaskBase
     use PxTasks;
     use loadTasks;
 
-    const CONFIG_DIR = '.project-x/features';
+    const STORAGE_DIR = '.project-x/features';
 
-    const CONFIG_FILE = 'features.yml';
+    const STORAGE_FILE = 'features.yml';
 
     /**
-     * Current parsed config stored in features.yml.
+     * Data storage parsed from yml file self::STORAGE_FILE.
      *
      * @var array
      */
-    protected $config;
+    protected $storage;
 
     /**
      * @var \Consolidation\Config\ConfigInterface|\Robo\Config\Config
      */
-    protected $configLoader;
+    protected $storageLoader;
 
     /**
      * @var \Cz\Git\GitRepository
@@ -50,9 +50,9 @@ class FeatureCommand extends PluginCommandTaskBase
     public function __construct(PluginInterface $plugin)
     {
         parent::__construct($plugin);
-        $file = PxApp::projectRootPath() . '/' . self::CONFIG_DIR . '/' . self::CONFIG_FILE;
-        $this->configLoader = Robo::createConfiguration([$file]);
-        $this->config = $this->configLoader->get('features');
+        $file = PxApp::projectRootPath() . '/' . self::STORAGE_DIR . '/' . self::STORAGE_FILE;
+        $this->storageLoader = Robo::createConfiguration([$file]);
+        $this->storage = $this->storageLoader->get('features');
         $this->git = new GitRepository('./');
     }
 
@@ -66,7 +66,7 @@ class FeatureCommand extends PluginCommandTaskBase
 
         $io->table($header, array_map(function($value) {
           return array_values($value);
-        }, $this->config));
+        }, $this->storage));
     }
 
     /**
@@ -77,10 +77,10 @@ class FeatureCommand extends PluginCommandTaskBase
         $name = $this->git->getCurrentBranchName();
         $io = new SymfonyStyle($this->input(), $this->output());
 
-        if ($this->configExists($name)) {
-            $config = $this->config($name);
+        if ($this->featureExists($name)) {
+            $storage = $this->storage($name);
             $rows = ["Current feature info"];
-            foreach ($config as $key => $value) {
+            foreach ($storage as $key => $value) {
                 $rows[] = [$key => $value];
             }
             $io->definitionList(...$rows);
@@ -132,18 +132,17 @@ class FeatureCommand extends PluginCommandTaskBase
       $this->git->commit('px feature save');
 
       $name = $this->git->getCurrentBranchName();
-      $config = &$this->config($name);
-      $config['temp_hash_id'] =  $this->git->getLastCommitId();
-      $this->configSave();
-
+      $storage = &$this->storage($name);
+      $storage['temp_hash_id'] =  $this->git->getLastCommitId();
+      $this->storageSave();
     }
 
     private function _gitRevertChanges() {
       $name = $this->git->getCurrentBranchName();
-      $config = &$this->config($name);
+      $storage = &$this->storage($name);
 
       $hash = $this->git->getLastCommitId();
-      if (isset($config['temp_hash_id']) && $hash === $config['temp_hash_id']) {
+      if (isset($storage['temp_hash_id']) && $hash === $storage['temp_hash_id']) {
         $this->git->reset($hash);
       }
     }
@@ -154,16 +153,16 @@ class FeatureCommand extends PluginCommandTaskBase
           $name = $this->git->getCurrentBranchName();
         }
         $this->taskSymfonyCommand($this->findCommand('db:export'))
-            ->arg('export_dir', self::CONFIG_DIR)
+            ->arg('export_dir', self::STORAGE_DIR)
             ->opt('filename', $name)
             ->run();
 
-        $config = &$this->config($name);
-        // TODO: Make this configurable.
-        $config['branch'] = $name;
+        $storage = &$this->storage($name);
+        // TODO: Make this overridable.
+        $storage['branch'] = $name;
         // TODO: Figure out the name of the file from the command.
-        $config['database'] = "{$name}.sql.gz";
-        $this->configSave();
+        $storage['database'] = "{$name}.sql.gz";
+        $this->storageSave();
     }
 
     /**
@@ -213,12 +212,12 @@ class FeatureCommand extends PluginCommandTaskBase
     }
 
     private function _drupalImportDatabase($name) {
-        $config = $this->config($name);
-        if (empty($config['database'])) {
-            throw new \Exception('No database file set in configuration.');
+        $storage = $this->storage($name);
+        if (empty($storage['database'])) {
+            throw new \Exception('No database file set in storageuration.');
         }
 
-        $file = PxApp::projectRootPath() . '/' . self::CONFIG_DIR . '/' . $config['database'];
+        $file = PxApp::projectRootPath() . '/' . self::STORAGE_DIR . '/' . $storage['database'];
         if (!file_exists($file)) {
             throw new \Exception('Database file no longer exists.');
         }
@@ -228,9 +227,9 @@ class FeatureCommand extends PluginCommandTaskBase
             ->run();
     }
 
-    private function configExists($name) {
+    private function featureExists($name) {
         $exists = FALSE;
-        foreach ($this->config as $feature) {
+        foreach ($this->storage as $feature) {
             if ($name == $feature['name']) {
                 $exists = TRUE;
             }
@@ -238,24 +237,24 @@ class FeatureCommand extends PluginCommandTaskBase
         return $exists;
     }
 
-    private function &config($name) {
-        foreach ($this->config as &$feature) {
+    private function &storage($name) {
+        foreach ($this->storage as &$feature) {
             if ($name == $feature['name']) {
                 return $feature;
             }
         }
 
-        $config = ['name' => $name];
-        $this->config[] = &$config;
-        return $config;
+        $storage = ['name' => $name];
+        $this->storage[] = &$storage;
+        return $storage;
     }
 
-    private function configSave(): void
+    private function storageSave(): void
     {
-        $this->configLoader->set('features', $this->config);
+        $this->storageLoader->set('features', $this->storage);
         /** @var Write $task */
-        $task = $this->taskWriteToFile(self::CONFIG_DIR . '/' . self::CONFIG_FILE);
-        $data = $this->configLoader->export();
+        $task = $this->taskWriteToFile(self::STORAGE_DIR . '/' . self::STORAGE_FILE);
+        $data = $this->storageLoader->export();
         $yaml = Yaml::dump($data);
         $task->text($yaml);
         $task->run();
