@@ -62,9 +62,9 @@ class FeatureCommand extends PluginCommandTaskBase
     public function featureList(): void
     {
         $io = new SymfonyStyle($this->input(), $this->output());
-        $top = reset($this->config);
+        $header = ['Name', 'Branch', 'Database file', 'Stash changes'];
 
-        $io->table(array_keys($top), array_map(function($value) {
+        $io->table($header, array_map(function($value) {
           return array_values($value);
         }, $this->config));
     }
