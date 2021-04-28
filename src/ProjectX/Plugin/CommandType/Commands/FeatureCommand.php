@@ -12,6 +12,7 @@ use Pr0jectX\Px\Task\LoadTasks as PxTasks;
 use Robo\Robo;
 use Robo\Task\Base\loadTasks;
 use Robo\Task\File\Write;
+use Symfony\Component\Console\Exception\CommandNotFoundException;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Yaml\Yaml;
 
@@ -172,10 +173,15 @@ class FeatureCommand extends PluginCommandTaskBase
             $this->_gitCheckoutBranch($name);
 
             // TODO: Add to plugin configuration for using pantheon.
-            if ($this->findCommand('platformsh:sync')) {
-              $this->taskSymfonyCommand($this->findCommand('platformsh:sync'))
-                  ->arg('siteEnv', $name)
-                  ->run();
+            try {
+                if ($this->findCommand('platformsh:sync')) {
+                    $this->taskSymfonyCommand($this->findCommand('platformsh:sync'))
+                        ->arg('siteEnv', $name)
+                        ->run();
+                }
+            }
+            catch (CommandNotFoundException $e) {
+                // Just skip, this needs to be improved on.
             }
             $this->featureSave($name);
         }
