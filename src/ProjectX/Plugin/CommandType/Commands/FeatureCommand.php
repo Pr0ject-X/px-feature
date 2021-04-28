@@ -74,7 +74,7 @@ class FeatureCommand extends PluginCommandTaskBase
      */
     public function featureInfo(): void
     {
-        $name = $this->git->getCurrentBranchName();
+        $name = $this->_getCurrentBranchName();
         $io = new SymfonyStyle($this->input(), $this->output());
 
         if ($this->featureExists($name)) {
@@ -91,7 +91,7 @@ class FeatureCommand extends PluginCommandTaskBase
     }
 
     private function _currentBranchIsFeature() {
-        $branch_name = $this->git->getCurrentBranchName();
+        $branch_name = $this->_getCurrentBranchName();
         return $this->featureExists($branch_name);
     }
 
@@ -102,7 +102,7 @@ class FeatureCommand extends PluginCommandTaskBase
      */
     public function featureCheckout(string $name): void
     {
-        $current_name = $this->git->getCurrentBranchName();
+        $current_name = $this->_getCurrentBranchName();
 
         if ($name != $current_name) {
             if ($this->confirm("Save feature $current_name before switching?", FALSE)) {
@@ -132,14 +132,14 @@ class FeatureCommand extends PluginCommandTaskBase
       $this->git->addAllChanges();
       $this->git->commit('px feature save');
 
-      $name = $this->git->getCurrentBranchName();
+      $name = $this->_getCurrentBranchName();
       $storage = &$this->storage($name);
       $storage['temp_hash_id'] =  $this->git->getLastCommitId();
       $this->storageSave();
     }
 
     private function _gitRevertChanges() {
-      $name = $this->git->getCurrentBranchName();
+      $name = $this->_getCurrentBranchName();
       $storage = &$this->storage($name);
 
       $hash = $this->git->getLastCommitId();
@@ -151,10 +151,10 @@ class FeatureCommand extends PluginCommandTaskBase
     public function featureSave($name = NULL): void
     {
         if (!$name) {
-          $name = $this->git->getCurrentBranchName();
+          $name = $this->_getCurrentBranchName();
         }
         $this->taskSymfonyCommand($this->findCommand('db:export'))
-            ->arg('export_dir', self::STORAGE_DIR)
+            ->arg('exportDir', self::STORAGE_DIR)
             ->opt('filename', $name)
             ->run();
 
@@ -185,13 +185,14 @@ class FeatureCommand extends PluginCommandTaskBase
     }
 
     private function _gitCheckoutBranch($name) {
-        if ($name == $this->git->getCurrentBranchName()) {
+        if ($name == $this->_getCurrentBranchName()) {
             if (!$this->confirm("Branch $name already checkout out, would you like to continue?")) {
                 throw new \Exception('Feature checkout canceled');
             }
         }
-        if ($name != $this->git->getCurrentBranchName()) {
-            $current_name = $this->git->getCurrentBranchName();
+        if ($name != $this->_getCurrentBranchName()) {
+            // Don't encode to compare with other branch names.
+            $current_name = $this->_getCurrentBranchName(FALSE);
             $branches = $this->git->getBranches();
             if (!in_array($name, $branches)) {
                 // TODO: Automatically create branch.
@@ -205,6 +206,9 @@ class FeatureCommand extends PluginCommandTaskBase
               $this->_gitCommitChanges();
             }
 
+            // Decode to real branch name.
+            // TODO: Move this to another function.
+            $name = str_replace('%2F', '/', $name);
             $this->git->checkout($name);
 
             // Current branch should be the newly checked out branch.
@@ -226,6 +230,11 @@ class FeatureCommand extends PluginCommandTaskBase
         $this->taskSymfonyCommand($this->findCommand('db:import'))
             ->arg('source_file', $file)
             ->run();
+    }
+
+    private function _getCurrentBranchName($encode = TRUE) {
+      $name = $this->git->getCurrentBranchName();
+      return $encode ? str_replace('/', '%2F', $name) : str_replace('%2F', '/', $name);
     }
 
     private function featureExists($name) {
