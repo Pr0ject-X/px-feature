@@ -52,7 +52,7 @@ class FeatureCommand extends PluginCommandTaskBase
         parent::__construct($plugin);
         $file = PxApp::projectRootPath() . '/' . self::STORAGE_DIR . '/' . self::STORAGE_FILE;
         $this->storageLoader = Robo::createConfiguration([$file]);
-        $this->storage = $this->storageLoader->get('features');
+        $this->storage = $this->storageLoader->get('features') ?? [];
         $this->git = new GitRepository('./');
     }
 
