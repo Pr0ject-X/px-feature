@@ -234,7 +234,7 @@ class FeatureCommand extends PluginCommandTaskBase
         }
 
         $this->taskSymfonyCommand($this->findCommand('db:import'))
-            ->arg('source_file', $file)
+            ->arg('importFile', $file)
             ->run();
     }
 
