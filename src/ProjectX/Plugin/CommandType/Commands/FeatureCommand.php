@@ -154,16 +154,17 @@ class FeatureCommand extends PluginCommandTaskBase
         if (!$name) {
           $name = $this->_getCurrentBranchName();
         }
+        $filename = $this->_encodeFilename($name);
         $this->taskSymfonyCommand($this->findCommand('db:export'))
             ->arg('exportDir', self::STORAGE_DIR)
-            ->opt('filename', $name)
+            ->opt('filename', $filename)
             ->run();
 
         $storage = &$this->storage($name);
         // TODO: Make this overridable.
         $storage['branch'] = $name;
         // TODO: Figure out the name of the file from the command.
-        $storage['database'] = "{$name}.sql.gz";
+        $storage['database'] = "{$filename}.sql.gz";
         $this->storageSave();
     }
 
@@ -212,9 +213,6 @@ class FeatureCommand extends PluginCommandTaskBase
               $this->_gitCommitChanges();
             }
 
-            // Decode to real branch name.
-            // TODO: Move this to another function.
-            $name = str_replace('%2F', '/', $name);
             $this->git->checkout($name);
 
             // Current branch should be the newly checked out branch.
@@ -222,10 +220,18 @@ class FeatureCommand extends PluginCommandTaskBase
         }
     }
 
+    private function _encodeFilename($name) {
+      return str_replace('/', '%2F', $name);
+    }
+
+    private function _decodeFilename($name) {
+      return str_replace('%2F', '/', $name);
+    }
+
     private function _drupalImportDatabase($name) {
         $storage = $this->storage($name);
         if (empty($storage['database'])) {
-            throw new \Exception('No database file set in storageuration.');
+            throw new \Exception('No database file set in storage.');
         }
 
         $file = PxApp::projectRootPath() . '/' . self::STORAGE_DIR . '/' . $storage['database'];
@@ -238,9 +244,8 @@ class FeatureCommand extends PluginCommandTaskBase
             ->run();
     }
 
-    private function _getCurrentBranchName($encode = TRUE) {
-      $name = $this->git->getCurrentBranchName();
-      return $encode ? str_replace('/', '%2F', $name) : str_replace('%2F', '/', $name);
+    private function _getCurrentBranchName() {
+      return $this->git->getCurrentBranchName();
     }
 
     private function featureExists($name) {
